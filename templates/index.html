@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图像区域处理工具</title>
+    <!-- 链接到适配后的外部CSS文件 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="Web icon" href="{{ url_for('static', filename='favicon.png') }}">
+</head>
+<body>
+
+<div class="container">
+    <h1>图像区域处理工具</h1>
+
+    <div class="controls">
+        <div class="control-group">
+            <h2 class="control-header">搜索</h2>
+            <div class="search-area">
+                <input type="text" id="search-query" name="search_query" placeholder="输入搜索关键词...">
+                <button id="search-btn" class="search-button">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <span>搜索</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h2 class="control-header">1. 选择图片来源 (可多选)</h2>
+            <div class="folder-checkboxes">
+                {% for folder_name in folders %}
+                <label class="checkbox-item">
+                    <input type="checkbox" id="folder-{{ loop.index }}" name="folder_checkbox" value="{{ folder_name }}" checked>
+                    <span>{{ folder_name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+
+        <div class="control-group">
+            <h2 class="control-header">NSFW 过滤</h2>
+            <div class="folder-checkboxes">
+                <label class="checkbox-item">
+                    <input type="radio" name="nsfw_filter" value="all" checked>
+                    <span>显示全部</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="radio" name="nsfw_filter" value="nsfw">
+                    <span>仅 NSFW</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="radio" name="nsfw_filter" value="normal">
+                    <span>仅常规</span>
+                </label>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <h2 class="control-header">2. 配置标签规则</h2>
+            <div class="label-grid">
+                {% for cls in all_classes|sort %}
+                <div class="label-item" data-label="{{ cls }}">
+                    <span class="label-name" title="{{ cls }}">{{ cls }}</span>
+                    <div class="label-options-group">
+                        <!-- 互斥单选：排除、必选、随机 -->
+                        <div class="selection-type-group">
+                            <label><input type="radio" name="type-{{ cls }}" value="exclude">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <span>排除</span>
+                            </label>
+                            <label><input type="radio" name="type-{{ cls }}" value="require">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                <span>必选</span>
+                            </label>
+                            <label><input type="radio" name="type-{{ cls }}" value="random"> <span>随机</span></label>
+                        </div>
+                        <!-- 处理方法和Reveal选项 -->
+                        <div class="processing-options">
+                            <select name="method_select" data-label="{{ cls }}">
+                                {% for method in methods %}
+                                <option value="{{ method }}">{{ method.replace('_', ' ').title() }}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="reveal-checkbox">
+                                <input type="checkbox" name="invert_checkbox" id="invert-{{ cls }}" data-label="{{ cls }}">
+                                <span>Reveal</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 外切圆复选框 -->
+        <div class="control-group">
+            <label class="checkbox-item">
+                <input type="checkbox" id="apply-circle-check" name="apply_circle_check">
+                <span>使用外切圆形状</span>
+            </label>
+        </div>
+
+        <button id="process-btn" class="main-button">开始 / 下一张</button>
+    </div>
+
+    <!-- 结果显示区域 -->
+    <div id="results-area" class="results">
+        <h2 id="filename"></h2>
+        <img id="processed-img" src="" alt="处理后的图片">
+        <p id="user-hint">点击图片可全屏查看，全屏下再次点击可处理下一张。</p>
+        <p id="status"></p>
+        <!-- 搜索模式控制按钮 -->
+        <div id="search-controls" class="search-controls">
+            <button id="prev-search-btn" class="search-nav-btn">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                <span>上一张</span>
+            </button>
+            <button id="next-search-btn" class="search-nav-btn">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                <span>下一张</span>
+            </button>
+            <button id="exit-search-btn" class="search-exit-btn">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>退出搜索</span>
+            </button>
+        </div>
+
+        <button id="delete-btn" class="main-button">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            <span>删除当前文件</span>
+        </button>
+    </div>
+</div>
+
+<!-- 全屏遮罩层 -->
+<div id="fullscreen-overlay">
+    <span id="close-fullscreen">&times;</span>
+    <img id="fullscreen-img" src="" alt="Fullscreen Image">
+</div>
+
+<script>
+    console.log('JavaScript loaded');
+    // --- 获取DOM元素 ---
+    const processBtn = document.getElementById('process-btn');
+    const deleteBtn = document.getElementById('delete-btn');
+    const processedImg = document.getElementById('processed-img');
+    const resultsArea = document.getElementById('results-area');
+    const statusEl = document.getElementById('status');
+    const filenameEl = document.getElementById('filename');
+    const folderCheckboxes = document.querySelectorAll('input[name="folder_checkbox"]');
+    const fullscreenOverlay = document.getElementById('fullscreen-overlay');
+    const fullscreenImg = document.getElementById('fullscreen-img');
+    const closeFullscreenBtn = document.getElementById('close-fullscreen');
+    const userHint = document.getElementById('user-hint');
+    const searchBtn = document.getElementById('search-btn');
+    const searchQueryEl = document.getElementById('search-query');
+    const searchControls = document.getElementById('search-controls');
+    const prevSearchBtn = document.getElementById('prev-search-btn');
+    const nextSearchBtn = document.getElementById('next-search-btn');
+    const exitSearchBtn = document.getElementById('exit-search-btn');
+
+    // --- 全局变量 ---
+    let currentImagePath = '';
+    let isProcessing = false;
+    let isSearchMode = false;
+    let searchQuery = '';
+    let searchResults = [];
+    let currentSearchIndex = -1;
+
+    // --- 函数：处理搜索 ---
+    const handleSearch = async () => {
+        console.log('handleSearch called');
+        const query = searchQueryEl.value.trim();
+        console.log('query:', query);
+        if (!query) {
+            statusEl.textContent = '请输入搜索关键词。';
+            return;
+        }
+
+        if (isProcessing) {
+            console.log('Already processing, return');
+            return;
+        }
+        isProcessing = true;
+        searchBtn.disabled = true;
+        searchBtn.textContent = '搜索中...';
+        statusEl.textContent = '';
+
+        try {
+            console.log('Sending search request...');
+            const response = await fetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query }),
+            });
+            console.log('Response status:', response.status);
+            const data = await response.json();
+            console.log('Response data:', data);
+            console.log('data.results:', data.results);
+            console.log('data.results.length:', data.results ? data.results.length : 'undefined');
+
+            if (response.ok && data.results && data.results.length > 0) {
+                console.log('Entering search mode with', data.results.length, 'results');
+                isSearchMode = true;
+                searchQuery = query;
+                searchResults = data.results;
+                currentSearchIndex = 0;
+                statusEl.textContent = `找到 ${searchResults.length} 个搜索结果。`;
+                // 显示第一张搜索结果
+                await displaySearchResult(0);
+            } else {
+                console.log('Search failed or no results');
+                statusEl.textContent = data.error || '未找到匹配的图片。';
+                isSearchMode = false;
+            }
+        } catch (error) {
+            console.log('Search error:', error);
+            statusEl.textContent = `搜索错误: ${error}`;
+            exitSearchMode();
+        } finally {
+            isProcessing = false;
+            searchBtn.disabled = false;
+            searchBtn.textContent = '搜索';
+        }
+    };
+
+    // --- 函数：退出搜索模式 ---
+    const exitSearchMode = () => {
+        isSearchMode = false;
+        searchQuery = '';
+        searchResults = [];
+        currentSearchIndex = -1;
+        searchControls.classList.remove('visible');
+        statusEl.textContent = '已退出搜索模式，返回正常模式。';
+        userHint.textContent = '点击图片可全屏查看，全屏下再次点击可处理下一张。';
+    };
+
+    // --- 函数：显示搜索结果 ---
+    const displaySearchResult = async (index) => {
+        console.log('displaySearchResult called with index:', index);
+        if (index < 0 || index >= searchResults.length) {
+            console.log('Index out of range');
+            return;
+        }
+
+        console.log('Starting to process search result', index);
+
+        // 收集 all_methods，就像在 processNextImage 中一样
+        const all_methods = {};
+        document.querySelectorAll('.label-item').forEach(item => {
+            const label = item.dataset.label;
+            const selectElement = item.querySelector(`select[data-label="${label}"]`);
+            const invertCheckbox = item.querySelector(`input[name="invert_checkbox"][data-label="${label}"]`);
+
+            // 总是为每个标签收集其处理方法，与筛选规则解耦
+            if (selectElement) {
+                all_methods[label] = {
+                    method: selectElement.value,
+                    invert: invertCheckbox && invertCheckbox.checked
+                };
+            }
+        });
+
+        try {
+            // 在搜索模式下，调用 /process 路由获取处理后的图片
+            console.log('Sending /process request for search result');
+            console.log('all_methods:', all_methods);
+            const response = await fetch('/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    search_results: searchResults,
+                    current_search_index: index,
+                    // 传递其他必要的参数
+                    excluded_labels: [],
+                    required_labels: [],
+                    selections: {},
+                    all_methods: all_methods,
+                    folders: ['Default (with JSON)', 'no_detection'],
+                    apply_circle: document.getElementById('apply-circle-check').checked,
+                    nsfw_filter: document.querySelector('input[name="nsfw_filter"]:checked').value
+                }),
+            });
+
+            console.log('/process response status:', response.status);
+            const data = await response.json();
+            console.log('/process response data:', data);
+
+            if (response.ok) {
+                console.log('Processing successful, updating UI');
+                const result = searchResults[index];
+                filenameEl.textContent = `搜索结果 ${index + 1}/${searchResults.length} (相似度: ${result.score?.toFixed(4) || 'N/A'}): ${result.folder_name} / ${result.path.split('/').pop() || result.path.split('\\').pop()}`;
+                processedImg.src = `data:image/jpeg;base64,${data.processed_image}`;
+                fullscreenImg.src = `data:image/jpeg;base64,${data.processed_image}`;
+                currentImagePath = data.image_path;
+                deleteBtn.disabled = false;
+                userHint.textContent = '搜索模式：点击图片可全屏查看，全屏下再次点击可查看下一张。';
+
+                if (!resultsArea.classList.contains('visible')) {
+                    resultsArea.classList.add('visible');
+                    setTimeout(() => resultsArea.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+                }
+
+                // 显示搜索控制按钮并更新状态
+                searchControls.classList.add('visible');
+                prevSearchBtn.disabled = index === 0;
+                nextSearchBtn.disabled = index === searchResults.length - 1;
+
+                console.log('UI updated successfully');
+            } else {
+                console.log('Processing failed:', data.error);
+                statusEl.textContent = `处理搜索结果失败: ${data.error || '未知错误'}`;
+            }
+        } catch (error) {
+            console.log('Processing error:', error);
+            statusEl.textContent = `处理搜索结果时出错: ${error}`;
+        } finally {
+            // No need to reset isProcessing here since displaySearchResult doesn't use it
+        }
+    };
+
+    // --- 函数：处理下一张图片 ---
+    const processNextImage = async () => {
+        if (isProcessing) return;
+        isProcessing = true;
+
+        // 检查是否在搜索模式
+        if (isSearchMode) {
+            currentSearchIndex++;
+            if (currentSearchIndex < searchResults.length) {
+                displaySearchResult(currentSearchIndex);
+                isProcessing = false;
+                return;
+            } else {
+                // 搜索结果已显示完毕，退出搜索模式
+                exitSearchMode();
+                statusEl.textContent = '搜索结果已显示完毕，返回正常模式。';
+                isProcessing = false;
+                return;
+            }
+        }
+
+        const processBtnSpan = processBtn.querySelector('span');
+        if (!fullscreenOverlay.classList.contains('visible')) {
+            if(processBtnSpan) processBtnSpan.textContent = '处理中...';
+            else processBtn.textContent = '处理中...';
+        } else {
+            fullscreenImg.style.cursor = 'wait';
+        }
+        processBtn.disabled = true;
+        deleteBtn.disabled = true;
+        statusEl.textContent = '';
+        currentImagePath = '';
+
+        const selectedFolders = Array.from(folderCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        if (selectedFolders.length === 0) {
+            statusEl.textContent = '请至少选择一个图片来源文件夹。';
+            isProcessing = false;
+            processBtn.disabled = false;
+            if(processBtnSpan) processBtnSpan.textContent = '开始 / 下一张';
+            else processBtn.textContent = '开始 / 下一张';
+            if (fullscreenOverlay.classList.contains('visible')) fullscreenImg.style.cursor = 'pointer';
+            return;
+        }
+
+        // --- 从新的UI收集数据 ---
+        const excluded_labels = [];
+        const required_labels = [];
+        const selections = {};
+        const all_methods = {};
+
+        document.querySelectorAll('.label-item').forEach(item => {
+            const label = item.dataset.label;
+            const selectElement = item.querySelector(`select[data-label="${label}"]`);
+            const invertCheckbox = item.querySelector(`input[name="invert_checkbox"][data-label="${label}"]`);
+
+            // 总是为每个标签收集其处理方法，与筛选规则解耦
+            if (selectElement) {
+                all_methods[label] = {
+                    method: selectElement.value,
+                    invert: invertCheckbox && invertCheckbox.checked
+                };
+            }
+
+            // 仅当选择了筛选规则（单选按钮）时，才收集这些规则
+            const checkedRadio = item.querySelector(`input[name="type-${label}"]:checked`);
+            if (checkedRadio) {
+                const selectionType = checkedRadio.value;
+                if (selectionType === 'exclude') {
+                    excluded_labels.push(label);
+                } else if (selectionType === 'require') {
+                    required_labels.push(label);
+                } else { // 'random'
+                    selections[label] = {
+                        method: selectElement.value,
+                        invert: invertCheckbox.checked
+                    };
+                }
+            }
+        });
+
+        try {
+            const response = await fetch('/process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    excluded_labels: excluded_labels,
+                    required_labels: required_labels,
+                    selections: selections,
+                    all_methods: all_methods,
+                    folders: selectedFolders,
+                    apply_circle: document.getElementById('apply-circle-check').checked,
+                    nsfw_filter: document.querySelector('input[name="nsfw_filter"]:checked').value
+                }),
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                const newImageSrc = `data:image/jpeg;base64,${data.processed_image}`;
+                filenameEl.textContent = `当前文件: ${data.filename}`;
+                processedImg.src = newImageSrc;
+                fullscreenImg.src = newImageSrc;
+                currentImagePath = data.image_path;
+                deleteBtn.disabled = false;
+                userHint.textContent = '处理完成！点击图片可全屏查看，全屏下再次点击可处理下一张。';
+                
+                if (!resultsArea.classList.contains('visible')) {
+                    resultsArea.classList.add('visible');
+                    setTimeout(() => resultsArea.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+                }
+            } else {
+                statusEl.textContent = `错误: ${data.error || '未知错误'}`;
+                if (fullscreenOverlay.classList.contains('visible')) {
+                    closeFullscreen();
+                }
+                resultsArea.classList.remove('visible');
+            }
+        } catch (error) {
+            statusEl.textContent = `网络或服务器错误: ${error}`;
+            if (fullscreenOverlay.classList.contains('visible')) {
+                closeFullscreen();
+            }
+        } finally {
+            isProcessing = false;
+            processBtn.disabled = false;
+            if(processBtnSpan) processBtnSpan.textContent = '开始 / 下一张';
+            else processBtn.textContent = '开始 / 下一张';
+            if (fullscreenOverlay.classList.contains('visible')) {
+                 fullscreenImg.style.cursor = 'pointer';
+            }
+        }
+    };
+
+    // --- 全屏功能函数 ---
+    const openFullscreen = () => {
+        if (processedImg.src && currentImagePath) {
+            fullscreenImg.src = processedImg.src;
+            fullscreenOverlay.classList.add('visible');
+            document.body.classList.add('fullscreen-active');
+        }
+    };
+
+    const closeFullscreen = () => {
+        fullscreenOverlay.classList.remove('visible');
+        document.body.classList.remove('fullscreen-active');
+    };
+
+    // --- 删除当前图片 ---
+    const deleteCurrentImage = async () => {
+        if (!currentImagePath || deleteBtn.disabled) return;
+        
+        // --- [已更新] 修改确认对话框文本以反映回收站行为 ---
+        const fileName = currentImagePath.split('/').pop() || currentImagePath.split('\\').pop();
+        if (!confirm(`确定要将以下文件移动到回收站吗？\n\n- ${fileName}\n- 关联的JSON文件 (如果存在)\n\n文件将被移走，索引将更新。`)) {
+            return;
+        }
+
+        if(fullscreenOverlay.classList.contains('visible')) {
+            closeFullscreen();
+        }
+
+        deleteBtn.disabled = true;
+        processBtn.disabled = true;
+        const deleteBtnSpan = deleteBtn.querySelector('span');
+        if(deleteBtnSpan) deleteBtnSpan.textContent = '删除中...';
+        else deleteBtn.textContent = '删除中...';
+
+        try {
+            const response = await fetch('/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: currentImagePath }),
+            });
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                resultsArea.classList.remove('visible');
+                currentImagePath = '';
+                statusEl.style.color = '#4CAF50';
+                statusEl.textContent = data.message || '文件已成功移至回收站。';
+                setTimeout(() => {
+                    statusEl.textContent = '';
+                    statusEl.style.color = 'var(--primary-red-hover)';
+                }, 2500);
+            } else {
+                statusEl.textContent = `操作失败: ${data.error || '未知错误'}`;
+                deleteBtn.disabled = false;
+            }
+        } catch (error) {
+            statusEl.textContent = `网络或服务器错误: ${error}`;
+            deleteBtn.disabled = false;
+        } finally {
+            if(deleteBtnSpan) deleteBtnSpan.textContent = '删除当前文件';
+            else deleteBtn.textContent = '删除当前文件';
+            processBtn.disabled = false;
+        }
+    };
+
+    // --- 绑定事件监听器 ---
+    console.log('Binding event listeners...');
+    processBtn.addEventListener('click', processNextImage);
+    deleteBtn.addEventListener('click', deleteCurrentImage);
+    searchBtn.addEventListener('click', handleSearch);
+    prevSearchBtn.addEventListener('click', () => {
+        if (currentSearchIndex > 0) {
+            currentSearchIndex--;
+            displaySearchResult(currentSearchIndex);
+        }
+    });
+    nextSearchBtn.addEventListener('click', () => {
+        if (currentSearchIndex < searchResults.length - 1) {
+            currentSearchIndex++;
+            displaySearchResult(currentSearchIndex);
+        }
+    });
+    exitSearchBtn.addEventListener('click', exitSearchMode);
+    console.log('searchBtn:', searchBtn);
+    console.log('Event listeners bound');
+    processedImg.addEventListener('click', openFullscreen);
+    fullscreenImg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        processNextImage();
+    });
+    closeFullscreenBtn.addEventListener('click', closeFullscreen);
+    fullscreenOverlay.addEventListener('click', closeFullscreen);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && fullscreenOverlay.classList.contains('visible')) {
+            closeFullscreen();
+        }
+        
+        // 空格键处理下一张图片（全平台支持）
+        if (event.key === ' ' && !event.target.matches('input, select, textarea')) {
+            event.preventDefault();
+            processNextImage();
+        }
+    });
+    
+
+    // --- 页面加载时自动设置默认规则 ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // 定义需要自动配置的标签列表
+        const autoConfigLabels = [
+            "FEMALE_BREAST_EXPOSED",
+            "FEMALE_GENITALIA_EXPOSED",
+            "ANUS_EXPOSED"
+        ];
+
+        autoConfigLabels.forEach(label => {
+            // --- 自动设置处理方法为 mosaic ---
+            const selectMethod = document.querySelector(`select[data-label="${label}"]`);
+            if (selectMethod) {
+                selectMethod.value = 'mosaic';
+            }
+        });
+        
+        // 将按钮文字包裹在span中，以便JS可以独立控制
+        if(processBtn.childNodes.length === 1 && processBtn.firstChild.nodeType === 3) {
+            const span = document.createElement('span');
+            span.textContent = processBtn.textContent;
+            processBtn.textContent = '';
+            processBtn.appendChild(span);
+        }
+
+        // --- 允许取消单选按钮选择 ---
+        document.querySelectorAll('.selection-type-group input[type="radio"]').forEach(radio => {
+            radio.addEventListener('click', function(e) {
+                const wasChecked = this.getAttribute('data-was-checked') === 'true';
+                if (wasChecked) {
+                    // 这个单选按钮已经被选中了，所以取消选中它。
+                    this.checked = false;
+                    this.setAttribute('data-was-checked', 'false');
+                } else {
+                    // 重置同一组中的单选按钮状态
+                    document.querySelectorAll(`input[name="${this.name}"]`).forEach(rb => {
+                        rb.setAttribute('data-was-checked', 'false');
+                    });
+                    // 将点击的项标记为已选中。
+                    this.setAttribute('data-was-checked', 'true');
+                }
+            });
+        });
+    });
+</script>
+
+</body>
+</html>

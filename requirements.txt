@@ -1,0 +1,10 @@
+flask
+opencv-python
+numpy
+torch
+faiss-cpu
+cn-clip
+pillow
+transformers
+tqdm
+nudenet

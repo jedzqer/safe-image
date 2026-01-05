@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# App data/artifacts
+image_features.index
+index_metadata.json
+deleted_list.txt
+recycle_bin/
+images/
+SafeNet/
+no_detection/
+input/

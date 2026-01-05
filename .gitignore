@@ -12,9 +12,13 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+.kilocodeignore
 
 # Logs
 *.log
+
+# Model
+NSFWdetector/model.safetensors
 
 # App data/artifacts
 image_features.index

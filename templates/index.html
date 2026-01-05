@@ -83,7 +83,7 @@
                         <div class="processing-options">
                             <select name="method_select" data-label="{{ cls }}">
                                 {% for method in methods %}
-                                <option value="{{ method }}">{{ method.replace('_', ' ').title() }}</option>
+                                <option value="{{ method }}">{{ method_display.get(method, method.replace('_', ' ').title()) }}</option>
                                 {% endfor %}
                             </select>
                             <label class="sticker-upload">

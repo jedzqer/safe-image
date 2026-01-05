@@ -517,6 +517,16 @@ EFFECT_CREATORS = {
     "sticker": create_sticker_effect,
 }
 
+METHOD_DISPLAY_NAMES = {
+    "none": "不处理",
+    "mosaic": "马赛克",
+    "black": "黑块遮挡",
+    "blur": "模糊",
+    "face_strip": "眼部遮挡条",
+    "sharp_sketch": "锐利素描",
+    "sticker": "贴纸遮挡"
+}
+
 # --- 贴纸遮挡辅助函数 ---
 
 def apply_sticker_overlay(target_img: np.ndarray, sticker_img: np.ndarray, box: List[int]) -> np.ndarray:
@@ -561,6 +571,7 @@ def index():
         'index.html',
         all_classes=ALL_CLASSES,
         label_display=LABEL_DISPLAY_NAMES,
+        method_display=METHOD_DISPLAY_NAMES,
         methods=list(EFFECT_CREATORS.keys()),
         folders=ALL_FOLDER_OPTIONS
     )

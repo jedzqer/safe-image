@@ -63,8 +63,9 @@
             <h2 class="control-header">2. 配置标签规则</h2>
             <div class="label-grid">
                 {% for cls in all_classes|sort %}
+                {% set display_name = label_display.get(cls, cls) %}
                 <div class="label-item" data-label="{{ cls }}">
-                    <span class="label-name" title="{{ cls }}">{{ cls }}</span>
+                    <span class="label-name" title="{{ cls }}">{{ display_name }}</span>
                     <div class="label-options-group">
                         <!-- 互斥单选：排除、必选、随机 -->
                         <div class="selection-type-group">

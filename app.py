@@ -103,6 +103,27 @@ ALL_CLASSES = [
     "MALE_GENITALIA_EXPOSED", "ANUS_COVERED", "FEMALE_BREAST_COVERED",
     "BUTTOCKS_COVERED"
 ]
+# 标签在前端的中文显示名
+LABEL_DISPLAY_NAMES = {
+    "FEMALE_GENITALIA_COVERED": "女性生殖器遮挡",
+    "FACE_FEMALE": "女性面部",
+    "BUTTOCKS_EXPOSED": "臀部暴露",
+    "FEMALE_BREAST_EXPOSED": "女性胸部暴露",
+    "FEMALE_GENITALIA_EXPOSED": "女性生殖器暴露",
+    "MALE_BREAST_EXPOSED": "男性胸部暴露",
+    "ANUS_EXPOSED": "肛门暴露",
+    "FEET_EXPOSED": "足部暴露",
+    "BELLY_COVERED": "腹部遮挡",
+    "FEET_COVERED": "足部遮挡",
+    "ARMPITS_COVERED": "腋下遮挡",
+    "ARMPITS_EXPOSED": "腋下暴露",
+    "FACE_MALE": "男性面部",
+    "BELLY_EXPOSED": "腹部暴露",
+    "MALE_GENITALIA_EXPOSED": "男性生殖器暴露",
+    "ANUS_COVERED": "肛门遮挡",
+    "FEMALE_BREAST_COVERED": "女性胸部遮挡",
+    "BUTTOCKS_COVERED": "臀部遮挡"
+}
 # 存放图片和JSON标注文件的主目录
 IMAGE_DIR = 'images'
 # 主目录下不进行JSON文件关联的子文件夹列表
@@ -501,6 +522,7 @@ def index():
     return render_template(
         'index.html',
         all_classes=ALL_CLASSES,
+        label_display=LABEL_DISPLAY_NAMES,
         methods=list(EFFECT_CREATORS.keys()),
         folders=ALL_FOLDER_OPTIONS
     )

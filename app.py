@@ -30,6 +30,7 @@ from flask import (
     Flask, render_template, request, jsonify,
     redirect, url_for, flash, Response
 )
+from werkzeug.utils import secure_filename
 
 # --- 语义搜索组件 ---
 
@@ -139,6 +140,7 @@ DELETED_LIST_FILE = 'deleted_list.txt'
 RECYCLE_BIN_DIR = 'recycle_bin'
 # 记录已删除文件信息的日志文件路径
 DELETED_LIST_FILE = 'deleted_list.txt'
+STICKER_DIR = 'sticker_uploads'
 
 # --- 短期图片缓存 ---
 # 使用一个固定大小的双端队列来存储最近返回过的图片路径，以避免在短期内重复出现同一张图片。
@@ -413,6 +415,10 @@ def create_no_effect(img: np.ndarray, **kwargs) -> np.ndarray:
     """一个占位符函数，不执行任何操作，直接返回原图。"""
     return img
 
+def create_sticker_effect(img: np.ndarray, **kwargs) -> np.ndarray:
+    """占位函数：贴纸效果由自定义逻辑处理。"""
+    return img
+
 def create_sharp_sketch_effect(img: np.ndarray, line_thickness: int = 1, detail_level: float = 0.6, **kwargs) -> np.ndarray:
     """
     锐利素描效果 - 主轮廓更清晰突出的黑底白线。
@@ -508,7 +514,39 @@ EFFECT_CREATORS = {
     "blur": create_blur_effect,
     "face_strip": create_face_strip_effect,
     "sharp_sketch": create_sharp_sketch_effect,
+    "sticker": create_sticker_effect,
 }
+
+# --- 贴纸遮挡辅助函数 ---
+
+def apply_sticker_overlay(target_img: np.ndarray, sticker_img: np.ndarray, box: List[int]) -> np.ndarray:
+    """
+    将贴纸覆盖到目标图像的指定区域。
+    支持带 alpha 通道的 PNG。
+    """
+    x, y, w, h = map(int, box)
+    if w <= 0 or h <= 0:
+        return target_img
+
+    H, W = target_img.shape[:2]
+    x1, y1 = max(0, x), max(0, y)
+    x2, y2 = min(W, x + w), min(H, y + h)
+    if x1 >= x2 or y1 >= y2:
+        return target_img
+
+    sticker_resized = cv2.resize(sticker_img, (x2 - x1, y2 - y1), interpolation=cv2.INTER_AREA)
+    roi = target_img[y1:y2, x1:x2]
+
+    if sticker_resized.shape[2] == 4:
+        sticker_rgb = sticker_resized[:, :, :3].astype(np.float32)
+        alpha = sticker_resized[:, :, 3].astype(np.float32) / 255.0
+        alpha = alpha[:, :, np.newaxis]
+        blended = (sticker_rgb * alpha + roi.astype(np.float32) * (1 - alpha)).astype(np.uint8)
+        target_img[y1:y2, x1:x2] = blended
+    else:
+        target_img[y1:y2, x1:x2] = sticker_resized[:, :, :3]
+
+    return target_img
 
 
 # --- Flask 路由定义 ---
@@ -730,12 +768,25 @@ def process_image():
         for task in normal_tasks:
             box = task['ann']['box']
             x, y, w, h = map(int, box)
-            if w <= 0 or h <= 0: continue
-            
-            creator_func = EFFECT_CREATORS.get(task['details']['method'], create_no_effect)
+            if w <= 0 or h <= 0:
+                continue
+
+            method = task['details'].get('method')
+            if method == 'sticker':
+                sticker_path = task['details'].get('sticker_path')
+                if sticker_path:
+                    sticker_abs = os.path.abspath(sticker_path)
+                    sticker_root = os.path.abspath(STICKER_DIR)
+                    if sticker_abs.startswith(sticker_root) and os.path.isfile(sticker_abs):
+                        sticker_img = cv2.imread(sticker_abs, cv2.IMREAD_UNCHANGED)
+                        if sticker_img is not None and sticker_img.ndim == 3:
+                            processed_img = apply_sticker_overlay(processed_img, sticker_img, box)
+                continue
+
+            creator_func = EFFECT_CREATORS.get(method, create_no_effect)
             roi_src = processed_img[y:y+h, x:x+w]
             
-            if task['details']['method'] == 'face_strip':
+            if method == 'face_strip':
                 # face_strip 需要在更大范围上操作，直接传递整个处理图
                 processed_img = creator_func(processed_img, box=box)
             elif apply_circle:
@@ -894,11 +945,42 @@ def search_images():
         app.logger.error(f"搜索时发生错误: {e}", exc_info=True)
         return jsonify({"error": "服务器内部错误。"}), 500
 
+@app.route('/upload_sticker', methods=['POST'])
+def upload_sticker():
+    """
+    上传贴纸图片并返回服务器保存路径。
+    """
+    try:
+        if 'sticker' not in request.files:
+            return jsonify({"error": "未找到上传文件。"}), 400
+        file = request.files['sticker']
+        label = request.form.get('label', 'unknown')
+        if not file or file.filename == '':
+            return jsonify({"error": "文件名为空。"}), 400
+
+        filename = secure_filename(file.filename)
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg']:
+            return jsonify({"error": "仅支持 PNG/JPG/JPEG 贴纸。"}), 400
+
+        os.makedirs(STICKER_DIR, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        safe_label = "".join([c for c in label if c.isalnum() or c in ['_', '-']]) or "sticker"
+        saved_name = f"{safe_label}_{timestamp}{ext}"
+        save_path = os.path.join(STICKER_DIR, saved_name)
+        file.save(save_path)
+
+        return jsonify({"sticker_path": os.path.abspath(save_path)})
+    except Exception as e:
+        app.logger.error(f"上传贴纸时发生错误: {e}", exc_info=True)
+        return jsonify({"error": "服务器内部错误。"}), 500
+
 # --- 应用程序入口点 ---
 if __name__ == '__main__':
     # 确保所有必要的目录在启动时都存在
     os.makedirs(IMAGE_DIR, exist_ok=True)
     os.makedirs(RECYCLE_BIN_DIR, exist_ok=True)
+    os.makedirs(STICKER_DIR, exist_ok=True)
     for sub_folder in SUB_FOLDERS_NO_JSON:
         path = os.path.join(IMAGE_DIR, sub_folder)
         os.makedirs(path, exist_ok=True)

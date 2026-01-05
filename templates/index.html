@@ -86,6 +86,11 @@
                                 <option value="{{ method }}">{{ method.replace('_', ' ').title() }}</option>
                                 {% endfor %}
                             </select>
+                            <label class="sticker-upload">
+                                <input type="file" accept=".png,.jpg,.jpeg" data-label="{{ cls }}">
+                                <span>上传贴纸</span>
+                            </label>
+                            <span class="sticker-status" data-label="{{ cls }}"></span>
                             <label class="reveal-checkbox">
                                 <input type="checkbox" name="invert_checkbox" id="invert-{{ cls }}" data-label="{{ cls }}">
                                 <span>Reveal</span>
@@ -261,7 +266,8 @@
             if (selectElement) {
                 all_methods[label] = {
                     method: selectElement.value,
-                    invert: invertCheckbox && invertCheckbox.checked
+                    invert: invertCheckbox && invertCheckbox.checked,
+                    sticker_path: item.dataset.stickerPath || ''
                 };
             }
         });
@@ -386,7 +392,8 @@
             if (selectElement) {
                 all_methods[label] = {
                     method: selectElement.value,
-                    invert: invertCheckbox && invertCheckbox.checked
+                    invert: invertCheckbox && invertCheckbox.checked,
+                    sticker_path: item.dataset.stickerPath || ''
                 };
             }
 
@@ -604,6 +611,40 @@
                     });
                     // 将点击的项标记为已选中。
                     this.setAttribute('data-was-checked', 'true');
+                }
+            });
+        });
+
+        // --- 贴纸上传 ---
+        document.querySelectorAll('.sticker-upload input[type="file"]').forEach(input => {
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                const label = e.target.getAttribute('data-label');
+                const statusEl = document.querySelector(`.sticker-status[data-label="${label}"]`);
+                const labelItem = document.querySelector(`.label-item[data-label="${label}"]`);
+                const selectElement = labelItem ? labelItem.querySelector(`select[data-label="${label}"]`) : null;
+                if (!file || !label || !labelItem) return;
+
+                if (statusEl) statusEl.textContent = '上传中...';
+                const formData = new FormData();
+                formData.append('sticker', file);
+                formData.append('label', label);
+
+                try {
+                    const response = await fetch('/upload_sticker', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    if (response.ok && data.sticker_path) {
+                        labelItem.dataset.stickerPath = data.sticker_path;
+                        if (selectElement) selectElement.value = 'sticker';
+                        if (statusEl) statusEl.textContent = '已上传';
+                    } else {
+                        if (statusEl) statusEl.textContent = data.error || '上传失败';
+                    }
+                } catch (error) {
+                    if (statusEl) statusEl.textContent = `上传错误: ${error}`;
                 }
             });
         });
